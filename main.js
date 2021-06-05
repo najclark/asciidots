@@ -1,4 +1,5 @@
 const DIRECTIONS = [new Point(-1, 0), new Point(0, 1), new Point(1, 0), new Point(0, -1)];
+const terminal = document.getElementById("terminal");
 let dots = [];
 let program = {};
 
@@ -11,11 +12,27 @@ function Point(row, col) {
         let col = this.col + dir.col;
         return new Point(row, col);
     }
+
+    this.opposite = () => {
+        return new Point(-this.row+1-1, -this.col+1-1);
+    }
+
+    this.equals = (P) => {
+        return this.row === P.row && this.col === P.col;
+    }
+
+    this.sub = (P) => {
+        return this.add(P.opposite());
+    }
+
+    this.scale = (i) => {
+        return new Point(this.row * i, this.col * i);
+    }
 }
 
 function loadProgram(input) {
     let rows = input.split('\n');
-    let longestRow = 0;
+    let longestRow = rows.length;
     rows.forEach(row => {
         if (longestRow < row.length) {
             longestRow = row.length;
@@ -35,23 +52,255 @@ function loadProgram(input) {
     program.size = longestRow;
     program.loaded = true;
     program.get = function(pos) {
-        if (0 <= pos.row && pos.row <= program.size && 
-            0 <= pos.col && pos.col <= program.size) {
+        if (0 <= pos.row && pos.row < program.size && 
+            0 <= pos.col && pos.col < program.size) {
                 return program.grid[pos.row][pos.col];
         }
         return -1;
     }
 }
 
+function highlightChar(pos) {
+    let cell = document.getElementById(`${pos.row}x${pos.col}`);
+    if (cell !== null) {
+        cell.style.backgroundColor = "red";
+    }
+}
+
+function resetChar(pos) {
+    let cell = document.getElementById(`${pos.row}x${pos.col}`);
+    if (cell !== null) {
+        cell.style.backgroundColor = "transparent";
+    }
+}
+
+function readNumInDir(start, dir) {
+    let curr = start;
+    let num = 0;
+    let asciiMode = false;
+    if (program.get(curr) === "a") {
+        asciiMode = true;
+        curr = curr.add(dir);
+    }
+    if (program.get(curr) === "?") {
+        let input = prompt("Please input a value:");
+        if (input === "") {
+            input = "0";
+        }
+        if (asciiMode) {
+            return {
+                number: input.charCodeAt(0),
+                end: curr.add(dir)
+            }
+        }
+        return {
+            number: parseInt(input),
+            end: curr.add(dir)
+        }
+    }
+    while (!isNaN(program.get(curr)) && program.get(curr) !== -1) {
+        num *= 10;
+        num += parseInt(program.get(curr));
+        curr = curr.add(dir);
+    }
+    return {
+        number: num,
+        end: curr
+    };
+}
+
+// TODO: handle escape characters better
+function readStrInDir(start, dir) {
+    let curr = start;
+    let str = "";
+    let wrapper = null;
+    let wrappersSeen = 0;
+    while (wrappersSeen !== 2) {
+        let char = program.get(curr);
+        if (wrapper === null && (char === "\"" || char === "'")) {
+            wrapper = char;
+        }
+        if (char === -1) {
+            return {
+                string: "Error printing!",
+                end: curr
+            };;
+        } else if (char === wrapper && program.get(curr.sub(dir)) !== "\\") {
+            wrappersSeen += 1;
+        } else if (wrappersSeen === 1) {
+            str += program.get(curr);
+        }
+
+        curr = curr.add(dir);
+    }
+    return {
+        string: str,
+        end: curr
+    };
+}
+
+function handleOutput(dot) {
+    let newline = "\n";
+    let asciiMode = false;
+    let nextChar = program.get(dot.next(1));
+    switch (nextChar) {
+        case "_":
+            newline = "";
+            break;
+        case "a":
+            asciiMode = true;
+            nextChar = program.get(dot.next(2));
+        case "#": {
+            let output = dot.value.toString();
+            if (asciiMode) {
+                output = String.fromCharCode(dot.value);
+            }
+            terminal.value += output + newline;
+            dot.nextPos = dot.next(3);
+        } return;
+        case "@": {
+            let output = dot.id.toString();
+            if (asciiMode) {
+                output = String.fromCharCode(dot.id);
+            }
+            terminal.value += output + newline;
+            dot.nextPos = dot.next(3);
+        } return;
+    }
+    console.log("here");
+    let {string, end} = readStrInDir(dot.pos, dot.dir);
+    terminal.value += string + newline;
+    dot.nextPos = end;
+}
+
 function Dot(initPos, initDir, initID, initValue) {
     this.id = initID;
     this.value = initValue;
     this.pos = initPos;
+    this.nextPos = initPos;
     this.dir = initDir;
+    this.alive = true;
+
+    this.next = (i) => {
+        return this.pos.add(this.dir.scale(i));
+    }
 
     this.step = function() {
-        this.pos = this.pos.add(this.dir);
-        console.log(program.get(this.pos));
+        resetChar(this.pos);
+        this.pos = this.nextPos;
+
+        if (program.get(this.pos) === -1) {
+            this.alive = false;
+            return;
+        }
+
+        highlightChar(this.pos);
+
+        let char = program.get(this.pos);
+        // console.log(`dot ${this.id} on "${char}"`);
+        // Changing direction cases
+        switch (char) {
+            case " ":
+                this.alive = false;
+                break;
+            case '-':
+                if (this.dir.row !== 0) {
+                    this.alive = false;
+                }
+                break;
+            case '|':
+                if (this.dir.col !== 0) {
+                    this.alive = false;
+                }
+                break;
+            case '&':
+                this.alive = false;
+                break;
+            case '\\':
+                if (this.dir == DIRECTIONS[0]) {
+                    this.dir = DIRECTIONS[3];
+                } else if (this.dir == DIRECTIONS[1]) {
+                    this.dir = DIRECTIONS[2];
+                } else if (this.dir == DIRECTIONS[2]) {
+                    this.dir = DIRECTIONS[1];
+                } else if (this.dir == DIRECTIONS[3]) {
+                    this.dir = DIRECTIONS[0];
+                }
+                break;
+            case '/':
+                if (this.dir == DIRECTIONS[0]) {
+                    this.dir = DIRECTIONS[1];
+                } else if (this.dir == DIRECTIONS[1]) {
+                    this.dir = DIRECTIONS[0];
+                } else if (this.dir == DIRECTIONS[2]) {
+                    this.dir = DIRECTIONS[3];
+                } else if (this.dir == DIRECTIONS[3]) {
+                    this.dir = DIRECTIONS[2];
+                }
+                break;
+            case '>':
+                if (this.dir != DIRECTIONS[3]) {
+                    this.dir = DIRECTIONS[1];
+                }
+                break;
+            case '<':
+                if (this.dir != DIRECTIONS[1]) {
+                    this.dir = DIRECTIONS[3];
+                }
+                break;
+            case '^':
+                if (this.dir != DIRECTIONS[2]) {
+                    this.dir = DIRECTIONS[0];
+                }
+                break;
+            case 'v':
+                if (this.dir != DIRECTIONS[0]) {
+                    this.dir = DIRECTIONS[2];
+                }
+                break;
+            case '(':
+                if (this.dir == DIRECTIONS[3]) {
+                    this.dir = DIRECTIONS[1];
+                }
+                break;
+            case ')':
+                if (this.dir == DIRECTIONS[1]) {
+                    this.dir = DIRECTIONS[3];
+                }
+                break;
+            case '*':
+                for (let i = 0; i < 4; i++) {
+                    if (program.get(this.pos.add(DIRECTIONS[i])) !== ' ' &&
+                        !DIRECTIONS[i].equals(this.dir) &&
+                        !DIRECTIONS[i].equals(this.dir.opposite())) {
+                            dots.push(new Dot(this.pos, DIRECTIONS[i], this.id, this.value));
+                    }
+                }
+                break;
+        }
+        this.nextPos = this.nextPos.add(this.dir);
+        // Teleporting cases
+        switch (char) {
+            case '#': {
+                let {number, end} = readNumInDir(this.next(), this.dir);
+                this.value = number;
+                this.nextPos = end;
+            } break;
+            case '@': {
+                let {number, end} = readNumInDir(this.next(), this.dir);
+                this.id = number;
+                this.nextPos = end;
+            } break;
+            case '$':
+                handleOutput(this);
+                break;
+            default:
+                break;
+        }
+
+        if (!this.alive) {
+            resetChar(this.pos);
+        }
     }
 
 }
@@ -77,16 +326,61 @@ function populateDots() {
     }
 }
 
+function setupTable() {
+    let table = document.getElementById('visulization');
+    // Clear table first
+    table.innerHTML = "";
 
+    for (let row = 0; row < program.size; row++) {
+        let newRow = table.insertRow(row);
+        for (let col = 0; col < program.size; col++) {
+            let cell = newRow.insertCell(col);
+            cell.id = `${row}x${col}`;
+            cell.innerHTML = program.get(new Point(row, col));
+        }
+    }
 
-function run() {
+}
+
+function setup() {
+    terminal.value = "===STARTING===\n";
     dots = [];
     program = {};
     let input = document.getElementById('code-input').value;
     loadProgram(input);
     populateDots();
-    
+    setupTable();
+}
+
+function run() {
+    if (program.loaded !== true) {
+        setup();
+    }
+
+    let loop = setInterval(() => {
+        step();
+
+        if (dots.length === 0) {
+            clearInterval(loop);
+        }
+    }, 500);
+}
+
+function step() {
+    if (program.loaded !== true) {
+        setup();
+    }
+
     dots.forEach(dot => {
         dot.step();
     });
+
+    dots = dots.filter(dot => dot.alive);
+
+    if (dots.length === 0) {
+        terminal.value += "\n===STOPPED===\n";
+        program.loaded = false;
+    }
+
+    console.log(dots);
 }

@@ -15,10 +15,24 @@
 <body>
     <label for="code-input">AsciiDots Code:</label>
     <br/>
-    <textarea id="code-input" name="code-input" rows="10" cols="50">.-$"Hello World"
+    <textarea id="code-input" name="code-input" rows="10" cols="50">
+        .
+        |
+        #
+        ? 
+        |
+        $
+        #
     </textarea>
 
     <button onclick="run()">Run</button>
+    <button onclick="step()">Step</button>
+
+    <table id="visulization">
+    </table>
+    <label for="terminal">Terminal:</label>
+    <br/>
+    <textarea readonly id="terminal" name="terminal" rows="10" cols="50"></textarea>
 
     <script src="main.js"></script>
 </body>
