@@ -49,6 +49,7 @@ function loadProgram(input) {
     }
 
     program.grid = grid;
+    program.data = [...Array(longestRow)].map(e => Array(longestRow));
     program.size = longestRow;
     program.loaded = true;
     program.get = function(pos) {
@@ -57,6 +58,25 @@ function loadProgram(input) {
                 return program.grid[pos.row][pos.col];
         }
         return -1;
+    }
+    program.getData = (pos) => {
+        if (0 <= pos.row && pos.row < program.size && 
+            0 <= pos.col && pos.col < program.size) {
+                return program.data[pos.row][pos.col];
+        }
+        return undefined;
+    }
+    program.setData = (pos, value) => {
+        if (0 <= pos.row && pos.row < program.size && 
+            0 <= pos.col && pos.col < program.size) {
+                program.data[pos.row][pos.col] = value;
+        }
+    }
+    program.resetData = (pos) => {
+        if (0 <= pos.row && pos.row < program.size && 
+            0 <= pos.col && pos.col < program.size) {
+                program.data[pos.row][pos.col] = undefined;
+        }
     }
 }
 
@@ -167,7 +187,6 @@ function handleOutput(dot) {
             dot.nextPos = dot.next(3);
         } return;
     }
-    console.log("here");
     let {string, end} = readStrInDir(dot.pos, dot.dir);
     terminal.value += string + newline;
     dot.nextPos = end;
@@ -181,7 +200,7 @@ function Dot(initPos, initDir, initID, initValue) {
     this.dir = initDir;
     this.alive = true;
 
-    this.next = (i) => {
+    this.next = (i = 1) => {
         return this.pos.add(this.dir.scale(i));
     }
 
@@ -277,17 +296,53 @@ function Dot(initPos, initDir, initID, initValue) {
                     }
                 }
                 break;
+            case '!':
+                if (this.value === 0) {
+                    this.value = 1;
+                } else {
+                    this.value = 0;
+                }
+                break;
+            case '~':
+                if (this.dir === DIRECTIONS[1] || 
+                    this.dir === DIRECTIONS[3] ||
+                    (this.dir.row === 0 && this.dir.col === 0)) {
+                    // Horizontal case
+                    if (program.getData(this.pos) === undefined) {
+                        // Dot from bottom hasn't arrived yet
+                        if (!(this.dir.row === 0 && this.dir.col === 0)) {
+                            // Stall dot if it isn't already being stalled
+                            this.savedDir = this.dir;
+                            this.dir = new Point(0, 0);
+                        }
+                    } else if (program.getData(this.pos) !== 0) {
+                        this.dir = DIRECTIONS[0];
+                        this.savedDir = undefined;
+                        program.resetData(this.pos);
+                    } else if (program.getData(this.pos) === 0) {
+                        if (this.savedDir !== undefined) {
+                            this.dir = this.savedDir;
+                            this.savedDir = undefined;
+                        }
+                        program.resetData(this.pos);
+                    }
+                } else if (this.dir === DIRECTIONS[0]){
+                    // Coming from the bottom case
+                    program.setData(this.pos, this.value);
+                    this.alive = false;
+                }
+                break;
         }
         this.nextPos = this.nextPos.add(this.dir);
         // Teleporting cases
         switch (char) {
             case '#': {
-                let {number, end} = readNumInDir(this.next(), this.dir);
+                let {number, end} = readNumInDir(this.next(1), this.dir);
                 this.value = number;
                 this.nextPos = end;
             } break;
             case '@': {
-                let {number, end} = readNumInDir(this.next(), this.dir);
+                let {number, end} = readNumInDir(this.next(1), this.dir);
                 this.id = number;
                 this.nextPos = end;
             } break;
