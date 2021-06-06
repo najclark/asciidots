@@ -192,6 +192,76 @@ function handleOutput(dot) {
     dot.nextPos = end;
 }
 
+function handleOperation (dot, char) {
+    let depositedData = program.getData(dot.pos);
+    if (depositedData === undefined) {
+        dot.stall();
+    } else {
+        dot.unstall();
+        switch (char) {
+            case '*':
+                dot.value *= depositedData;
+                break;
+            case '/':
+                dot.value /= depositedData;
+                break;
+            case '+':
+                dot.value += depositedData;
+                break;
+            case '-':
+                dot.value -= depositedData;
+                break;
+            case '%':
+                dot.value %= depositedData;
+                break;
+            case '^':
+                dot.value **= depositedData;
+                break;
+            case '&':
+                if (dot.value !== 0 && depositedData !== 0) {
+                    dot.value = 1;
+                } else {
+                    dot.value = 0;
+                }
+                break;
+            case 'o':
+                if (dot.value !== 0 || depositedData !== 0) {
+                    dot.value = 1;
+                } else {
+                    dot.value = 0;
+                }
+                break;
+            case 'x':
+                if ((dot.value !== 0 && depositedData === 0) ||
+                    (dot.value === 0 && depositedData !== 0)) {
+                    dot.value = 1;
+                } else {
+                    dot.value = 0;
+                }
+                break;
+            case '>':
+                dot.value = (dot.value > depositedData) ? 1 : 0;
+                break;
+            case 'G':
+                dot.value = (dot.value >= depositedData) ? 1 : 0;
+                break;
+            case '<':
+                dot.value = (dot.value < depositedData) ? 1 : 0;
+                break;
+            case 'L':
+                dot.value = (dot.value <= depositedData) ? 1 : 0;
+                break;
+            case '=':
+                dot.value = (dot.value === depositedData) ? 1 : 0;
+                break;
+            case '!':
+                dot.value = (dot.value !== depositedData) ? 1 : 0;
+                break;
+        }
+        program.resetData(dot.pos);
+    }
+}
+
 function Dot(initPos, initDir, initID, initValue) {
     this.id = initID;
     this.value = initValue;
@@ -202,6 +272,32 @@ function Dot(initPos, initDir, initID, initValue) {
 
     this.next = (i = 1) => {
         return this.pos.add(this.dir.scale(i));
+    }
+
+    this.isHorizontal = () => {
+        return this.dir.row === 0 && this.dir.col !== 0;
+    }
+
+    this.isVertical = () => {
+        return this.dir.row !== 0 && this.dir.col === 0;
+    }
+
+    this.isStalled = () => {
+        return this.dir.row === 0 && this.dir.col === 0;
+    }
+
+    this.stall = () => {
+        if (!this.isStalled()) {
+            this.savedDir = this.dir;
+            this.dir = new Point(0, 0);
+        }
+    }
+
+    this.unstall = () => {
+        if (this.isStalled()) {
+            this.dir = this.savedDir;
+            this.savedDir = undefined;
+        }
     }
 
     this.step = function() {
@@ -216,6 +312,31 @@ function Dot(initPos, initDir, initID, initValue) {
         highlightChar(this.pos);
 
         let char = program.get(this.pos);
+        // leftChar used to identify when in an operation
+        let leftChar = program.get(this.pos.add(DIRECTIONS[3]));
+        switch (leftChar) {
+            case '{':
+                if (this.isVertical()) {
+                    program.setData(this.pos, this.value);
+                    this.alive = false;
+                    resetChar(this.pos);
+                    return;
+                } 
+                handleOperation(this, char);
+                this.nextPos = this.nextPos.add(this.dir);
+                return;
+            case '[':
+                if (this.isHorizontal()) {
+                    program.setData(this.pos, this.value);
+                    this.alive = false;
+                    resetChar(this.pos);
+                    return;
+                } 
+                handleOperation(this, char);
+                this.nextPos = this.nextPos.add(this.dir);
+                return;
+                return;
+        }
         // console.log(`dot ${this.id} on "${char}"`);
         // Changing direction cases
         switch (char) {
@@ -289,7 +410,7 @@ function Dot(initPos, initDir, initID, initValue) {
                 break;
             case '*':
                 for (let i = 0; i < 4; i++) {
-                    if (program.get(this.pos.add(DIRECTIONS[i])) !== ' ' &&
+                        if (program.get(this.pos.add(DIRECTIONS[i])) !== ' ' &&
                         !DIRECTIONS[i].equals(this.dir) &&
                         !DIRECTIONS[i].equals(this.dir.opposite())) {
                             dots.push(new Dot(this.pos, DIRECTIONS[i], this.id, this.value));
@@ -431,6 +552,12 @@ function step() {
     });
 
     dots = dots.filter(dot => dot.alive);
+
+    // Rerun stalled dots incase an updated would unstall them
+    stalleDots = dots.filter(dot => dot.isStalled());
+    stalleDots.forEach(dot => {
+        dot.step();
+    });
 
     if (dots.length === 0) {
         terminal.value += "\n===STOPPED===\n";
