@@ -2,6 +2,7 @@ const DIRECTIONS = [new Point(-1, 0), new Point(0, 1), new Point(1, 0), new Poin
 const terminal = document.getElementById("terminal");
 let dots = [];
 let program = {};
+let warps = {};
 
 function Point(row, col) {
     this.row = row;
@@ -30,6 +31,83 @@ function Point(row, col) {
     }
 }
 
+function Warp(identifier, endpoints) {
+    this.identifier = identifier;
+    this.endpoints = endpoints;
+}
+
+function inString(pos, size) {
+    let leftDouble = 0, rightDouble = 0, upDouble = 0, downDouble = 0;
+    let leftSingle = 0, rightSingle = 0, upSingle = 0, downSingle = 0;
+    for (let i = 0; i < size; i++) {
+        let left = pos.add(DIRECTIONS[3].scale(i));
+        let right = pos.add(DIRECTIONS[1].scale(i));
+        let up = pos.add(DIRECTIONS[0].scale(i));
+        let down = pos.add(DIRECTIONS[2].scale(i));
+
+        switch (program.get(left)) {
+            case "\"":
+                leftDouble++;
+                break;
+            case "'":
+                leftSingle++;
+                break;
+        }
+        switch (program.get(right)) {
+            case "\"":
+                rightDouble++;
+                break;
+            case "'":
+                rightSingle++;
+                break;
+        }
+        switch (program.get(up)) {
+            case "\"":
+                upDouble++;
+                break;
+            case "'":
+                upSingle++;
+                break;
+        }
+        switch (program.get(down)) {
+            case "\"":
+                downDouble++;
+                break;
+            case "'":
+                downSingle++;
+                break;
+        }
+    }
+    if (leftDouble % 2 === 1 && rightDouble % 2 === 1) {
+        return true;
+    }
+    if (leftSingle % 2 === 1 && rightSingle % 2 === 1) {
+        return true;
+    }
+    if (upDouble % 2 === 1 && downDouble % 2 === 1) {
+        return true;
+    }
+    if (upSingle % 2 === 1 && downSingle % 2 === 1) {
+        return true;
+    }
+    return false;
+}
+
+function findEndpoints(identifier, identifierPos) {
+    let endpoints = [];
+    for (let row = 0; row < program.size; row++) {
+        for (let col = 0; col < program.size; col++) {
+            let pos = new Point(row, col);
+            if (program.get(pos) === identifier && !pos.equals(identifierPos)) {
+                if (!inString(pos, program.size)) {
+                    endpoints.push(pos);
+                }
+            }
+        }
+    }
+    return endpoints;
+}
+
 function loadProgram(input) {
     let rows = input.split('\n');
     let longestRow = rows.length;
@@ -49,6 +127,7 @@ function loadProgram(input) {
     }
 
     program.grid = grid;
+    // Create 2d undefined grid
     program.data = [...Array(longestRow)].map(e => Array(longestRow));
     program.size = longestRow;
     program.loaded = true;
@@ -59,6 +138,25 @@ function loadProgram(input) {
         }
         return -1;
     }
+    // Search for warps
+    for (let i = 0; i < program.size; i++) {
+        if (typeof rows[i] !== 'undefined') {
+            if (rows[i].startsWith("%$")) {
+                let col = 2; // Starting at 2, because %$ is two characters
+                let pos = new Point(i, col);
+                while (col < program.size && program.get(pos).match(/[a-zA-Z]/) !== null) {
+                    let identifier = program.get(pos);
+                    let endpoints = findEndpoints(identifier, pos);
+                    if (endpoints.length >= 2) {
+                        // Valid warp found
+                        warps[identifier] = endpoints;
+                    }
+                    pos = new Point(i, ++col);
+                }
+            }
+        }
+    }
+    console.log(warps);
     program.getData = (pos) => {
         if (0 <= pos.row && pos.row < program.size && 
             0 <= pos.col && pos.col < program.size) {
@@ -348,19 +446,29 @@ function Dot(initPos, initDir, initID, initValue) {
                 this.nextPos = this.nextPos.add(this.dir);
                 return;
         }
-        // console.log(`dot ${this.id} on "${char}"`);
+        // Warp cases
+        for (const [identifier, endpoints] of Object.entries(warps)) {
+            if (char === identifier) {
+                for (let endpoint of endpoints) {
+                    if (!this.pos.equals(endpoint)) {
+                        this.nextPos = endpoint.add(this.dir);
+                        return;
+                    }
+                }
+            }
+        }
         // Changing direction cases
         switch (char) {
             case " ":
                 this.alive = false;
                 break;
             case '-':
-                if (this.dir.row !== 0) {
+                if (this.isVertical()) {
                     this.alive = false;
                 }
                 break;
             case '|':
-                if (this.dir.col !== 0) {
+                if (this.isHorizontal()) {
                     this.alive = false;
                 }
                 break;
