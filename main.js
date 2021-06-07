@@ -198,65 +198,76 @@ function handleOperation (dot, char) {
         dot.stall();
     } else {
         dot.unstall();
+        let oldValue = dot.value;
+        if (dot.idOperation) {
+            oldValue = dot.id;
+        } 
+        let updatedValue = 0;
         switch (char) {
             case '*':
-                dot.value *= depositedData;
+                updatedValue = oldValue * depositedData;
                 break;
             case '/':
-                dot.value /= depositedData;
+                updatedValue = oldValue / depositedData;
                 break;
             case '+':
-                dot.value += depositedData;
+                updatedValue = oldValue + depositedData;
                 break;
             case '-':
-                dot.value -= depositedData;
+                updatedValue = oldValue - depositedData;
                 break;
             case '%':
-                dot.value %= depositedData;
+                updatedValue = oldValue % depositedData;
                 break;
             case '^':
-                dot.value **= depositedData;
+                updatedValue = oldValue ** depositedData;
                 break;
             case '&':
-                if (dot.value !== 0 && depositedData !== 0) {
-                    dot.value = 1;
+                if (oldValue !== 0 && depositedData !== 0) {
+                    updatedValue = 1;
                 } else {
-                    dot.value = 0;
+                    updatedValue = 0;
                 }
                 break;
             case 'o':
-                if (dot.value !== 0 || depositedData !== 0) {
-                    dot.value = 1;
+                if (oldValue !== 0 || depositedData !== 0) {
+                    updatedValue = 1;
                 } else {
-                    dot.value = 0;
+                    updatedValue = 0;
                 }
                 break;
             case 'x':
-                if ((dot.value !== 0 && depositedData === 0) ||
-                    (dot.value === 0 && depositedData !== 0)) {
-                    dot.value = 1;
+                if ((oldValue !== 0 && depositedData === 0) ||
+                    (oldValue === 0 && depositedData !== 0)) {
+                        updatedValue = 1;
                 } else {
-                    dot.value = 0;
+                    updatedValue = 0;
                 }
                 break;
             case '>':
-                dot.value = (dot.value > depositedData) ? 1 : 0;
+                updatedValue = (oldValue > depositedData) ? 1 : 0;
                 break;
             case 'G':
-                dot.value = (dot.value >= depositedData) ? 1 : 0;
+                updatedValue = (oldValue >= depositedData) ? 1 : 0;
                 break;
             case '<':
-                dot.value = (dot.value < depositedData) ? 1 : 0;
+                updatedValue = (oldValue < depositedData) ? 1 : 0;
                 break;
             case 'L':
-                dot.value = (dot.value <= depositedData) ? 1 : 0;
+                updatedValue = (oldValue <= depositedData) ? 1 : 0;
                 break;
             case '=':
-                dot.value = (dot.value === depositedData) ? 1 : 0;
+                updatedValue = (oldValue === depositedData) ? 1 : 0;
                 break;
             case '!':
-                dot.value = (dot.value !== depositedData) ? 1 : 0;
+                updatedValue = (oldValue !== depositedData) ? 1 : 0;
                 break;
+        }
+        if (dot.idOperation === true) {
+            dot.idOperation = false;
+            dot.id = updatedValue;
+        } else {
+            dot.value = updatedValue;
         }
         program.resetData(dot.pos);
     }
@@ -269,6 +280,7 @@ function Dot(initPos, initDir, initID, initValue) {
     this.nextPos = initPos;
     this.dir = initDir;
     this.alive = true;
+    this.idOperation = false;
 
     this.next = (i = 1) => {
         return this.pos.add(this.dir.scale(i));
@@ -335,7 +347,6 @@ function Dot(initPos, initDir, initID, initValue) {
                 handleOperation(this, char);
                 this.nextPos = this.nextPos.add(this.dir);
                 return;
-                return;
         }
         // console.log(`dot ${this.id} on "${char}"`);
         // Changing direction cases
@@ -353,6 +364,26 @@ function Dot(initPos, initDir, initID, initValue) {
                     this.alive = false;
                 }
                 break;
+            case ':': {
+                let value = this.value;
+                if (this.idOperation === true) {
+                    this.idOperation = false;
+                    value = this.id;
+                }
+                if (value === 0) {
+                    this.alive = false;
+                }
+            } break;
+            case ';': {
+                let value = this.value;
+                if (this.idOperation === true) {
+                    this.idOperation = false;
+                    value = this.id;
+                }
+                if (value === 1) {
+                    this.alive = false;
+                }
+            } break;
             case '&':
                 this.alive = false;
                 break;
@@ -454,7 +485,7 @@ function Dot(initPos, initDir, initID, initValue) {
                 }
                 break;
         }
-        this.nextPos = this.nextPos.add(this.dir);
+        this.nextPos = this.next(1);
         // Teleporting cases
         switch (char) {
             case '#': {
@@ -463,6 +494,31 @@ function Dot(initPos, initDir, initID, initValue) {
                 this.nextPos = end;
             } break;
             case '@': {
+                let nextChar = program.get(this.next(1));
+                if (this.isHorizontal()) {
+                    if (nextChar === '{') {
+                        this.idOperation = true;
+                        break;
+                    } else if (nextChar === '[') {
+                        this.value = this.id;
+                        break;
+                    } else if (nextChar === ':' || nextChar === ';') {
+                        this.idOperation = true;
+                        break;
+                    }
+                } else if (this.isVertical()) {
+                    let upperLeftChar = program.get(this.next(1).add(DIRECTIONS[3]));
+                    if (upperLeftChar === '{') {
+                        this.value = this.id;
+                        break;
+                    } else if (upperLeftChar === '[') {
+                        this.idOperation = true;
+                        break;
+                    } else if (nextChar === ':' || nextChar === ';') {
+                        this.idOperation = true;
+                        break;
+                    }
+                }
                 let {number, end} = readNumInDir(this.next(1), this.dir);
                 this.id = number;
                 this.nextPos = end;
